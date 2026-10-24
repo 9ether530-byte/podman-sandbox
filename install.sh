@@ -36,6 +36,15 @@ else
   echo "podman installed: $(podman --version)"
 fi
 
+# Podman also needs its network helpers, even for --network=none/host:
+# without netavark, `podman info` fails with "could not find netavark".
+# A VM replacement can restore podman without them (e.g. a
+# --no-install-recommends replay), so install them explicitly if missing.
+if [ ! -x /usr/lib/podman/netavark ] || [ ! -x /usr/lib/podman/aardvark-dns ]; then
+  echo "network helpers missing, installing netavark + aardvark-dns via apt..."
+  DEBIAN_FRONTEND=noninteractive apt-get install -y netavark aardvark-dns
+fi
+
 # Rootful Podman reads /etc/containers/*.conf, not ~/.config/containers/*.
 # Render the templates with the real data dir and install them (root only;
 # the wrapper in ./podman-sandbox works without this step, via flags).

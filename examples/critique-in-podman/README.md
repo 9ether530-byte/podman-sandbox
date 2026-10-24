@@ -39,16 +39,22 @@ podman-sandbox stop critique-api; podman-sandbox rm critique-api
 - `/capture` was not exercised: it needs a real MP4/WebM upload
   plus Screex/ffmpeg, which is a separate test, not an API smoke test.
 
-## A real bug found, not a container bug
+## A real bug found, then fixed
 
-`/trends` returns Internal Server Error in the container, with
-`AttributeError: 'collections.defaultdict' object has no attribute
-'most_common'` in `app/packaging/trends.py` line 59:
-`low_score_hits` is a `defaultdict(int)`, and `.most_common` is a
-`Counter` method. That code path fails on the host too — it is a
-bug in the critique source, not something Podman introduced. It
-is reported here, not fixed here; fixing it is a separate step
-in the critique repo.
+`/trends` originally returned Internal Server Error in the
+container, with `AttributeError: 'collections.defaultdict'
+object has no attribute 'most_common'` in
+`app/packaging/trends.py` line 59: `low_score_hits` was a
+`defaultdict(int)`, and `.most_common` is a `Counter` method.
+That code path fails on the host too — it was a bug in the
+critique source, not something Podman introduced.
+
+Fixed 2026-10-24 in the critique checkout itself (one line:
+`low_score_hits` is now a `Counter`), tested standalone with
+empty and populated critiques, then re-verified in Podman from
+a rebuilt image: `/trends` now returns the empty trend object
+instead of a 500, and `/health` still reports mock escrow with
+Stripe not configured.
 
 ## Disk note
 

@@ -27,7 +27,14 @@
 set -euo pipefail
 
 if [ "${1:-}" = "check" ]; then
-  exec "$(dirname "${BASH_SOURCE[0]}")/check.sh"
+  if [ -x "$(dirname "${BASH_SOURCE[0]}")/check.sh" ]; then
+    exec "$(dirname "${BASH_SOURCE[0]}")/check.sh"
+  elif command -v podman-sandbox-check >/dev/null 2>&1; then
+    exec podman-sandbox-check
+  else
+    echo "podman-sandbox: check.sh not found; run ./check.sh from the repo" >&2
+    exit 1
+  fi
 fi
 if [ "${1:-}" = "install" ]; then
   exec "$(dirname "${BASH_SOURCE[0]}")/install.sh"
