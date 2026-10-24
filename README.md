@@ -55,6 +55,11 @@ Networked example (shares the host network stack, by design):
   host-networked on port 8765, with a volume mount that writes its
   result back to the host. See its README for the run and the
   verified result.
+- `examples/factory-in-podman/` — the synergetic workload: runner
+  scripts that run the Digital Download Factory's CLI demo and API
+  inside Podman, isolated from the live factory. The factory code
+  itself is not in this repo; the scripts copy it to an isolated
+  `.workload/` directory. See its README for the verified run.
 
 ## Boot-guard
 

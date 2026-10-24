@@ -1,3 +1,4 @@
 podman-data/
 *.log
 /tmp/
+examples/factory-in-podman/.workload/
