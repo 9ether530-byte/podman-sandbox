@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# podman-sandbox: run Podman in a restricted sandbox where the defaults fail.
+#
+# What it fixes, in one place:
+#   - overlay / fuse-overlayfs cannot mount (no /dev/fuse)  -> vfs storage
+#   - crun fails opening sd-bus                            -> --cgroups=disabled
+#   - a separate network namespace is refused              -> default --network=none,
+#     or pass --network=host for a networked container
+#   - rootful Podman ignores ~/.config/containers/*.conf   -> this wrapper
+#     passes the storage flags explicitly, so it works even when
+#     /etc/containers/*.conf has been wiped by a VM replacement.
+#
+# Usage:
+#   podman-sandbox run --rm docker.io/library/hello-world
+#   podman-sandbox run --network=host --rm docker.io/library/alpine sh
+#   podman-sandbox check        # diagnostics, no container run
+#   podman-sandbox install      # run install.sh (apt install + /etc config)
+#   podman-sandbox <any podman args>   # passed through with storage flags
+#
+# Data directory: $PODMAN_SANDBOX_DATA if set, else
+# $HOME/workspace/podman-data if a workspace exists, else
+# $HOME/.local/share/podman-sandbox-data. Images stored there survive
+# a VM replacement when the directory is under a persistent home.
+set -euo pipefail
+
+if [ "${1:-}" = "check" ]; then
+  exec "$(dirname "${BASH_SOURCE[0]}")/check.sh"
+fi
+if [ "${1:-}" = "install" ]; then
+  exec "$(dirname "${BASH_SOURCE[0]}")/install.sh"
+fi
+
+if ! command -v podman >/dev/null 2>&1; then
+  echo "podman-sandbox: podman is not installed. Run: podman-sandbox install" >&2
+  exit 1
+fi
+
+if [ -n "${PODMAN_SANDBOX_DATA:-}" ]; then
+  DATA_DIR="$PODMAN_SANDBOX_DATA"
+elif [ -d "$HOME/workspace" ]; then
+  DATA_DIR="$HOME/workspace/podman-data"
+else
+  DATA_DIR="$HOME/.local/share/podman-sandbox-data"
+fi
+mkdir -p "$DATA_DIR/graphroot" "$DATA_DIR/runroot"
+
+# Refuse the one mode known to fail here, with a useful message, rather
+# than letting netavark fail cryptically.
+for arg in "$@"; do
+  case "$arg" in
+    --network=bridge|--network=private|--net=bridge|--net=private)
+      echo "podman-sandbox: isolated bridge networking is blocked in this sandbox (netavark setns: Operation not permitted)." >&2
+      echo "Use --network=none (offline) or --network=host (networked) instead." >&2
+      exit 2
+      ;;
+  esac
+done
+
+# For run/create, default to --network=none when the user did not pick a
+# network mode, and always disable cgroups (the sd-bus failure otherwise).
+ARGS=()
+HAS_NETWORK=0
+IS_RUN=0
+for arg in "$@"; do
+  case "$arg" in
+    --network*|--net*) HAS_NETWORK=1 ;;
+    run|create) IS_RUN=1 ;;
+  esac
+  ARGS+=("$arg")
+done
+
+PODMAN_ARGS=(--storage-driver=vfs --root "$DATA_DIR/graphroot" --runroot "$DATA_DIR/runroot")
+if [ "$IS_RUN" = "1" ]; then
+  # --cgroups and --network are run/create flags, not global podman flags,
+  # so they must be inserted right after the run/create verb.
+  OUT=()
+  INSERTED=0
+  for arg in "${ARGS[@]}"; do
+    OUT+=("$arg")
+    if [ "$INSERTED" = "0" ] && { [ "$arg" = "run" ] || [ "$arg" = "create" ]; }; then
+      OUT+=(--cgroups=disabled)
+      if [ "$HAS_NETWORK" = "0" ]; then
+        OUT+=(--network=none)
+      fi
+      INSERTED=1
+    fi
+  done
+  ARGS=("${OUT[@]}")
+fi
+
+exec podman "${PODMAN_ARGS[@]}" "${ARGS[@]}"
