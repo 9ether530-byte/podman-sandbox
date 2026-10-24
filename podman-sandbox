@@ -13,6 +13,9 @@
 # Usage:
 #   podman-sandbox run --rm docker.io/library/hello-world
 #   podman-sandbox run --network=host --rm docker.io/library/alpine sh
+#   podman-sandbox build --network=host -t myimage .   # build containers
+#     also need cgroup handling: the wrapper adds --cgroup-manager=cgroupfs
+#     for build, or RUN steps fail with "crun: cannot open sd-bus"
 #   podman-sandbox check        # diagnostics, no container run
 #   podman-sandbox install      # run install.sh (apt install + /etc config)
 #   podman-sandbox <any podman args>   # passed through with storage flags
@@ -70,6 +73,12 @@ for arg in "$@"; do
 done
 
 PODMAN_ARGS=(--storage-driver=vfs --root "$DATA_DIR/graphroot" --runroot "$DATA_DIR/runroot")
+# Build containers hit the same sd-bus failure as run containers, but
+# via the cgroup manager instead of --cgroups=disabled: add
+# --cgroup-manager=cgroupfs for build (global flag, before the verb).
+if [ "${1:-}" = "build" ]; then
+  PODMAN_ARGS+=(--cgroup-manager=cgroupfs)
+fi
 if [ "$IS_RUN" = "1" ]; then
   # --cgroups and --network are run/create flags, not global podman flags,
   # so they must be inserted right after the run/create verb.

@@ -1,0 +1,32 @@
+# Containerfile for the Micro-SaaS Critique Exchange gateway.
+#
+# Build with ./build-image.sh, not by hand: that script copies the
+# critique code into an isolated build context, passes the proxy and
+# egress CA bundle through as build args / a build volume when they
+# exist, and tags the result critique-sandbox:latest.
+#
+# The critique code itself is not in this repo; build-image.sh copies
+# app/ and requirements.txt from a critique checkout. No keys are
+# passed in: Stripe and Stellar stay key-gated, so escrow runs in
+# local mock mode and payout endpoints return 503 stripe_not_configured,
+# exactly as they do without keys on the host.
+FROM docker.io/library/python:3.12-slim
+WORKDIR /code
+
+# Build args only: available during RUN, not persisted in the image
+# unless an ENV line copies them (none does, on purpose).
+ARG http_proxy
+ARG https_proxy
+ARG HTTP_PROXY
+ARG HTTPS_PROXY
+ARG PIP_CERT
+ARG SSL_CERT_FILE
+ARG REQUESTS_CA_BUNDLE
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY app ./app
+
+EXPOSE 8002
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8002"]

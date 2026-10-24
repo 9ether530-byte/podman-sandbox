@@ -2,3 +2,7 @@ podman-data/
 *.log
 /tmp/
 examples/factory-in-podman/.workload/
+examples/factory-in-podman/.build/
+examples/critique-in-podman/.workload/
+examples/critique-in-podman/.build/
+__pycache__/

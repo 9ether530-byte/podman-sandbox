@@ -34,6 +34,26 @@ Networked example (shares the host network stack, by design):
 ./podman-sandbox run --network=host --rm docker.io/library/alpine sh
 ```
 
+## On a normal Ubuntu box (not a restricted sandbox)
+
+Run `./check.sh` first. If it reports `/dev/fuse` present and
+isolated bridge networking works there, stock Podman will work
+fine on its own — this repo is not needed for that case. The
+wrapper still works there (vfs is slower than overlay, and it
+refuses bridge networking by design), so it is safe to use as a
+portable fallback, but it is not a replacement for stock Podman
+where the normal modes already work. The guard snippet is for
+restricted sandboxes that wipe Podman on VM replacement, not for
+normal servers.
+
+## Tested on
+
+Ubuntu 24.04, Podman 4.9.3, 2026-10-24: hello-world with
+`--network=none`, Alpine with `--network=host`, a full
+remove-then-reinstall cycle through `install.sh`, the factory
+demo and API from a Containerfile build, and `prune.sh` /
+`check.sh` reporting.
+
 ## Files
 
 - `install.sh` — apt install (Ubuntu/Debian) if Podman is missing, plus
@@ -44,8 +64,19 @@ Networked example (shares the host network stack, by design):
   `--network=none` unless you pick `--network=host`, and refuses bridge
   networking with a useful error instead of a netavark failure.
 - `check.sh` — diagnostics: Podman version, `/dev/fuse`, capabilities,
-  cgroup writability, storage driver. No image pull.
+  cgroup writability, storage driver, plus disk use (`podman system
+  df` and graphroot size). No image pull.
 - `test.sh` — smoke test: hello-world via the wrapper.
+- `prune.sh` — safe disk reclaim: stopped containers and dangling
+  images only. It deliberately does NOT run `image prune -a`,
+  `system prune`, or `volume prune`, which would delete kept images
+  or real data. Use `--dry-run` to preview. Measured 2026-10-24:
+  prune reclaimed 0 bytes, because the cost here is vfs
+  duplication (see Disk below), not dangling images.
+- `PORTS.md` — the host-network port map. With `--network=host`,
+  container ports are host ports, so this records what JARVIS, n8n,
+  and the Podman workloads use or reserve, and the rule for picking
+  a new one.
 - `configs/storage.conf` — vfs template (`__DATA_DIR__` is substituted
   by `install.sh`); `configs/containers.conf` — cgroups disabled.
 - `guard/HEARTBEAT.snippet.md` — one line to add to a heartbeat checklist
@@ -55,11 +86,19 @@ Networked example (shares the host network stack, by design):
   host-networked on port 8765, with a volume mount that writes its
   result back to the host. See its README for the run and the
   verified result.
-- `examples/factory-in-podman/` — the synergetic workload: runner
-  scripts that run the Digital Download Factory's CLI demo and API
-  inside Podman, isolated from the live factory. The factory code
-  itself is not in this repo; the scripts copy it to an isolated
-  `.workload/` directory. See its README for the verified run.
+- `examples/factory-in-podman/` — the synergetic workload: a
+  Containerfile and `build-image.sh` that build the Digital
+  Download Factory reproducibly, plus runner scripts for its CLI
+  demo and API inside Podman, isolated from the live factory. The
+  factory code itself is not in this repo; the scripts copy it to
+  isolated `.build/` / `.workload/` directories. See its README
+  for the verified run.
+- `examples/critique-in-podman/` — the second business app in
+  Podman: a Containerfile and `build-image.sh` for the Micro-SaaS
+  Critique Exchange gateway, plus `run-api.sh`. No keys are passed
+  in, so escrow is in mock mode and Stripe is not configured.
+  See its README for the verified run, and for a real `/trends`
+  bug found in the critique source (not a container bug).
 
 ## Boot-guard
 
@@ -70,6 +109,18 @@ heartbeat cadence (about 30 minutes on the VM this was built on), not
 instant, and it restores Podman in its limited form — it cannot grant
 fuse, a network namespace, or user namespaces.
 
+## Disk: vfs duplication is the real cost
+
+`podman system df` said 290.7 MB, but the graphroot on disk was
+977 MB on 2026-10-24, and 3.3 GB after the 994 MB critique image
+was built the same day. vfs copies layers instead of sharing them,
+and each committed image is a full filesystem copy (about 276 MB
+for factory-sandbox, twice after two commits). `prune.sh` and
+`podman rmi` on old/intermediate images did not shrink that
+materially. So: do not commit repeatedly, build one image properly,
+and only use `podman system reset` manually if disk really matters
+— it deletes every image and container and forces re-pulls.
+
 ## What this does NOT solve
 
 - Isolated container networking (bridge, pods with port publishing).
@@ -77,9 +128,3 @@ fuse, a network namespace, or user namespaces.
 - GPU access, or resizing the host VM. Those are platform limits.
 - Overlay performance: vfs copies layers instead of sharing them, so
   images use more disk. That is the price of working at all here.
-
-## Tested on
-
-Ubuntu 24.04, Podman 4.9.3, 2026-10-24: hello-world with
-`--network=none`, Alpine with `--network=host`, and a full
-remove-then-reinstall cycle through `install.sh`.

@@ -15,22 +15,35 @@ live factory's `factory.db` and `outputs/` are never touched.
 ## Run it
 
 ```bash
+./build-image.sh ~/workspace/digital-product-factory
+# builds factory-sandbox:latest reproducibly from Containerfile
 ./run-demo.sh ~/workspace/digital-product-factory "Camping Meal Planner"
-# outputs land in .workload/outputs, and the demo container is
-# committed as factory-sandbox:latest
+# outputs land in .workload/outputs; no container is committed
 ./run-api.sh
 curl http://localhost:8001/health
 podman-sandbox stop factory-api; podman-sandbox rm factory-api
 ```
 
+`run-demo.sh` builds the image first if it does not exist yet.
+
 ## Verified live on 2026-10-24
 
 - CLI demo for "Camping Meal Planner": 8 chapters, 10 PDF pages,
   QA 1.0, Gumroad $18.32 in simulated mode, PDF in outputs.
-- Factory API from the committed image on port 8001: `/health`
-  returned `digital-download-factory`, `/products` listed the
+- Factory API from the built image (251 MB, replacing the earlier
+  282 MB committed image) on port 8001: `/health` returned
+  `digital-download-factory`, `/products` listed the
   container-generated product, `/niches/evaluate` matched live scoring.
 - Live factory outputs and database were untouched (still Oct 19).
+
+## Build note: cgroup manager
+
+`podman build` RUN steps fail here with `crun: cannot open sd-bus`
+unless the cgroup manager is cgroupfs. The wrapper now adds
+`--cgroup-manager=cgroupfs` automatically for `build`, and
+`build-image.sh` passes the proxy and egress CA bundle as build
+args / a build volume when they exist, so pip works through the
+proxy. On a plain box without them, the build runs without those args.
 
 ## Two limits this exposed
 

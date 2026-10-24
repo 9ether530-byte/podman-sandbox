@@ -12,11 +12,16 @@
 #   FACTORY_DIR=~/workspace/digital-product-factory ./run-demo.sh
 #   ./run-demo.sh ~/workspace/digital-product-factory "Camping Meal Planner"
 #
-# After a successful demo, the container is committed as
-# factory-sandbox:latest, so run-api.sh can start the API without
-# reinstalling dependencies.
+# The demo runs from factory-sandbox:latest, built reproducibly by
+# ./build-image.sh. If that image does not exist yet, run-demo.sh
+# builds it first instead of committing a demo container (each commit
+# was a ~276 MB full copy under vfs).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+# Use the wrapper on PATH, or the repo copy two levels up.
+if ! command -v podman-sandbox >/dev/null 2>&1 && [ -x "$PWD/../../podman-sandbox" ]; then
+  PATH="$PWD/../..:$PATH"
+fi
 
 FACTORY_DIR="${1:-${FACTORY_DIR:-$HOME/workspace/digital-product-factory}}"
 TOPIC="${2:-Camping Meal Planner}"
@@ -46,23 +51,17 @@ if [ -f "$CA_FILE" ]; then
   CA_ARGS=(-v "$CA_FILE:$CA_FILE:ro" -e SSL_CERT_FILE -e REQUESTS_CA_BUNDLE -e CURL_CA_BUNDLE -e "PIP_CERT=$CA_FILE")
 fi
 
-# If a committed factory image already exists, use it (dependencies are
-# already installed); otherwise install them in a fresh Python container.
-if podman-sandbox image exists factory-sandbox:latest >/dev/null 2>&1; then
-  BASE_IMAGE="factory-sandbox:latest"
-  RUN_CMD="python cli.py demo \"$TOPIC\" --output-dir outputs"
-else
-  BASE_IMAGE="docker.io/library/python:3.12-slim"
-  RUN_CMD="pip install -q -r requirements.txt && python cli.py demo \"$TOPIC\" --output-dir outputs"
+# If the built image does not exist yet, build it first.
+if ! podman-sandbox image exists factory-sandbox:latest >/dev/null 2>&1; then
+  echo "No factory-sandbox image yet; building it with ./build-image.sh ..."
+  ./build-image.sh "$FACTORY_DIR"
 fi
 
 podman-sandbox rm -f factory-demo >/dev/null 2>&1 || true
 podman-sandbox run --network=host --name factory-demo \
   -v "$WORKLOAD:/code" "${PROXY_ARGS[@]}" "${CA_ARGS[@]}" \
-  "$BASE_IMAGE" bash -c "cd /code && $RUN_CMD"
+  factory-sandbox:latest bash -c "cd /code && python cli.py demo \"$TOPIC\" --output-dir outputs"
 
 echo "Demo complete. Outputs in $WORKLOAD/outputs"
-echo "Committing demo container as factory-sandbox:latest for fast API runs..."
-podman-sandbox commit factory-demo factory-sandbox:latest >/dev/null
-podman-sandbox rm factory-demo >/dev/null
+podman-sandbox rm factory-demo >/dev/null 2>&1 || true
 echo "Done. Start the API with ./run-api.sh"

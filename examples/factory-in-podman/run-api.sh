@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # run-api.sh: run the Digital Download Factory API from the
-# factory-sandbox image (created by run-demo.sh), on host networking.
+# factory-sandbox image (built by build-image.sh), on host networking.
 #
 # Port 8000 is already taken by another service on the sandbox VM this
 # was built on, so the default port here is 8001. Override with:
@@ -10,6 +10,10 @@
 # never the live factory's database or outputs.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
+# Use the wrapper on PATH, or the repo copy two levels up.
+if ! command -v podman-sandbox >/dev/null 2>&1 && [ -x "$PWD/../../podman-sandbox" ]; then
+  PATH="$PWD/../..:$PATH"
+fi
 
 PORT="${PORT:-8001}"
 WORKLOAD="$PWD/.workload"
@@ -19,7 +23,7 @@ if [ ! -d "$WORKLOAD/app" ]; then
   exit 1
 fi
 if ! podman-sandbox image exists factory-sandbox:latest >/dev/null 2>&1; then
-  echo "run-api.sh: no factory-sandbox image found. Run ./run-demo.sh first." >&2
+  echo "run-api.sh: no factory-sandbox image found. Run ./build-image.sh first." >&2
   exit 1
 fi
 
