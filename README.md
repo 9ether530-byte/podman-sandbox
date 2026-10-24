@@ -50,6 +50,11 @@ Networked example (shares the host network stack, by design):
   by `install.sh`); `configs/containers.conf` — cgroups disabled.
 - `guard/HEARTBEAT.snippet.md` — one line to add to a heartbeat checklist
   so a periodic tick reinstalls Podman if a VM wipe removed it.
+- `examples/first-workload/` — the first real workload verified with
+  this wrapper: a stdlib-only Python service in `python:3.12-slim`,
+  host-networked on port 8765, with a volume mount that writes its
+  result back to the host. See its README for the run and the
+  verified result.
 
 ## Boot-guard
 
