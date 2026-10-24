@@ -27,10 +27,23 @@ fi
 # Use the wrapper when it is on PATH, otherwise plain podman (the
 # wrapper's system df is the same command with the vfs data dir).
 if command -v podman-sandbox >/dev/null 2>&1; then
-  podman-sandbox system df 2>/dev/null | head -5 || true
+  PODMAN_CMD="podman-sandbox"
 else
-  podman system df 2>/dev/null | head -5 || true
+  PODMAN_CMD="podman"
 fi
+$PODMAN_CMD system df 2>/dev/null | head -5 || true
+# Business images: these are the expensive ones to rebuild (factory
+# ~1 min, critique ~9 min), so report them explicitly. A missing
+# image after a VM replacement is not fixed by install.sh — it only
+# restores Podman itself — so a missing image means "rebuild with
+# examples/<name>/build-image.sh", not "run install.sh again".
+for img in factory-sandbox:latest critique-sandbox:latest; do
+  if $PODMAN_CMD image exists "$img" >/dev/null 2>&1; then
+    say "image: $img present"
+  else
+    say "image: $img MISSING (rebuild with examples/*/build-image.sh)"
+  fi
+done
 say "known-good modes: --network=none, --network=host"
 say "known-blocked: isolated bridge networking, fuse overlay, rootless user namespaces"
 exit "$ok"

@@ -81,6 +81,9 @@ demo and API from a Containerfile build, and `prune.sh` /
   by `install.sh`); `configs/containers.conf` — cgroups disabled.
 - `guard/HEARTBEAT.snippet.md` — one line to add to a heartbeat checklist
   so a periodic tick reinstalls Podman if a VM wipe removed it.
+- `guard/IMAGES.snippet.md` — optional heartbeat line to report
+  missing factory/critique images (rebuilding them is deliberate,
+  not automatic, so this snippet only reports, it never rebuilds).
 - `examples/first-workload/` — the first real workload verified with
   this wrapper: a stdlib-only Python service in `python:3.12-slim`,
   host-networked on port 8765, with a volume mount that writes its

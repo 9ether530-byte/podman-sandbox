@@ -36,8 +36,31 @@ podman-sandbox stop critique-api; podman-sandbox rm critique-api
 - `/payout/withdraw` with a nonexistent bounty returned
   404 bounty not found, before any Stripe check — expected, since
   no bounty exists without a capture first.
-- `/capture` was not exercised: it needs a real MP4/WebM upload
-  plus Screex/ffmpeg, which is a separate test, not an API smoke test.
+
+## Full loop verified 2026-10-24, after a cv2 fix
+
+`/capture` first failed: `import cv2` in the slim image failed
+with `libxcb.so.1: cannot open shared object file`, because
+opencv-python needs X11/GL system libs. The Containerfile now
+installs `libgl1 libglib2.0-0 libxcb1 libxext6 libsm6 libxrender1`
+(after pip, so the pip layer cache is preserved). Also note:
+`podman exec` into a running container fails here with
+`crun: setns mnt: Operation not permitted` — debug with a
+one-shot `podman-sandbox run` instead, not exec.
+
+With that fix, the full loop ran in Podman, with the factory
+API live at the same time on port 8001:
+
+- POST `/capture` with the existing `data/smoke/synthetic.mp4`:
+  critique `7586ce18c1ab`, composite 88.1, 12 suggestions.
+- GET `/critique/{id}`: modernity weakest at 48.5, others 88–100.
+- POST `/bounty/fund` (suggestion 0, $50): bounty
+  `d17fb77a1e70`, state FUNDED, receipt mode mock, no keys.
+- GET `/trends`: critique_count 1, weakest modernity /
+  accessibility / typography, anti-pattern
+  `recurring_low_modernity` — this is the fixed trends code
+  working on real data, not just the empty case.
+- GET `/templates/modernity`: 2 suggestions, pack built.
 
 ## A real bug found, then fixed
 
