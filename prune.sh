@@ -37,11 +37,26 @@ DRY_RUN=0
 if [ "${1:-}" = "--dry-run" ]; then DRY_RUN=1; fi
 
 DATA_DIR="${PODMAN_SANDBOX_DATA:-$HOME/workspace/podman-data}"
+# On-disk du is bounded (see check.sh): on 2026-11-10 it took over 60s
+# on 155 vfs layers, so it runs under `timeout 15` and is skipped
+# with a note when slow. `podman system df` is the fast size.
+graphroot_size() {
+  if [ ! -d "$DATA_DIR/graphroot" ]; then return 0; fi
+  local size=""
+  if command -v timeout >/dev/null 2>&1; then
+    size="$(timeout 15 du -sh "$DATA_DIR/graphroot" 2>/dev/null | cut -f1 || true)"
+  else
+    size="$(du -sh "$DATA_DIR/graphroot" 2>/dev/null | cut -f1 || true)"
+  fi
+  if [ -n "$size" ]; then
+    echo "graphroot on disk: $size"
+  else
+    echo "graphroot on disk: too slow to measure (>15s, skipped)"
+  fi
+}
 echo "before:"
 "$WRAPPER" system df 2>&1 || true
-if [ -d "$DATA_DIR/graphroot" ]; then
-  echo "graphroot on disk: $(du -sh "$DATA_DIR/graphroot" 2>/dev/null | cut -f1)"
-fi
+graphroot_size
 
 if [ "$DRY_RUN" = 1 ]; then
   echo "dry-run: stopped containers and dangling images would be removed; nothing was deleted."
@@ -53,8 +68,6 @@ fi
 
 echo "after:"
 "$WRAPPER" system df 2>&1 || true
-if [ -d "$DATA_DIR/graphroot" ]; then
-  echo "graphroot on disk: $(du -sh "$DATA_DIR/graphroot" 2>/dev/null | cut -f1)"
-fi
+graphroot_size
 echo "kept images (should still include factory-sandbox and python):"
 "$WRAPPER" images 2>&1 || true

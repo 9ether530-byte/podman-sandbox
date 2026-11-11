@@ -67,4 +67,4 @@ GRAPH_DRIVER="$(podman info --format '{{.Store.GraphDriverName}}' 2>/dev/null ||
 echo "podman graph driver (system config): $GRAPH_DRIVER"
 echo "wrapper data dir: $DATA_DIR"
 echo "Use: ./podman-sandbox run --rm docker.io/library/hello-world"
-echo "Known-good networks: --network=none, --network=host. Isolated bridge networking is blocked in this sandbox."
+echo "Known-good networks: --network=host. --network=none currently fails on this VM (crun ioctl SIOCSIFFLAGS, 2026-11-10). Isolated bridge networking is blocked in this sandbox."

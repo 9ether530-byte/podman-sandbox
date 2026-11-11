@@ -14,7 +14,7 @@ with one script, and stay working after a wipe with a boot-guard.
 |---|---|---|
 | `fuse: device not found`, overlay mount fails | `/dev/fuse` does not exist; `modprobe fuse` fails, the module is not in `/lib/modules`, and the host kernel is not accessible | vfs storage driver (`configs/storage.conf`, or the wrapper's `--storage-driver=vfs`) |
 | `crun: cannot open sd-bus` | No systemd user bus / cgroup delegation for the container runtime | `--cgroups=disabled` (`configs/containers.conf`) |
-| `netavark: setns: Operation not permitted` | Creating a network namespace is refused (effective caps here are essentially only `cap_sys_ptrace`, with no-new-privs) | `--network=none` (offline) or `--network=host` (networked). Isolated bridge networking is **not** fixable from inside |
+| `netavark: setns: Operation not permitted` | Creating a network namespace is refused (effective caps here are essentially only `cap_sys_ptrace`, with no-new-privs) | `--network=host` (networked). Isolated bridge networking is **not** fixable from inside. `--network=none` also stopped working on the replacement VM in place from 2026-11-10 (see below) |
 | Rootless + pasta/slirp still fails | `newuidmap: write to uid_map failed` — user namespaces are blocked | Not used. Rootful + host/none networking is the working path |
 | Podman disappears after a VM replacement | The binary and `/etc/containers/*` live outside the persistent home directory | `install.sh` is idempotent and re-runnable; see Boot-guard below |
 | `~/.config/containers/*.conf` seems ignored | Rootful Podman reads `/etc/containers/*.conf`, not the home config | `install.sh` copies the templates into `/etc` (when root); the wrapper passes the same settings as flags, so it works either way |
@@ -54,6 +54,26 @@ remove-then-reinstall cycle through `install.sh`, the factory
 demo and API from a Containerfile build, and `prune.sh` /
 `check.sh` reporting.
 
+Re-audited 2026-11-10 on a replacement VM (4 cores, 7.7 GiB RAM,
+150G disk; caps now include `cap_net_admin` and `cap_net_raw`):
+bridge networking is still blocked (netavark setns refused) and
+the wrapper is still required. The first workload, factory demo,
+and critique capture loop were all re-verified live that day.
+Note: `check.sh` / `prune.sh` no longer run an unbounded
+`du -sh` on the graphroot — it took over 60s on 155 vfs layers,
+so it is bounded to 15s and skipped with a note when slow.
+
+`--network=none` regression (2026-11-10): on the replacement VM,
+every `--network=none` container fails with
+`crun: ioctl(SIOCSIFFLAGS): Operation not permitted`, even with
+`--cgroups=disabled` and even though the caps now include
+`cap_net_admin`. It worked on the Oct 24 VM. This is a host-level
+change, not fixable from inside — same class as fuse/netns. The
+wrapper default is therefore `--network=host` until a future VM
+makes none work again. Explicit `--network=none` is still passed
+through (it will fail with the crun error, not a wrapper error),
+so do not use it on this VM.
+
 ## Files
 
 - `install.sh` — apt install (Ubuntu/Debian) if Podman is missing, plus
@@ -61,7 +81,11 @@ demo and API from a Containerfile build, and `prune.sh` /
   the wrapper. Safe to re-run.
 - `podman-sandbox` — the wrapper. Passes vfs storage, a persistent data
   dir, and `--cgroups=disabled`; defaults `run`/`create` to
-  `--network=none` unless you pick `--network=host`, and refuses bridge
+  `--network=host` (the only working mode on the VM in place from
+  2026-11-10 — `--network=none` fails there with
+  `crun: ioctl(SIOCSIFFLAGS): Operation not permitted`, so the old
+  `--network=none` default was flipped to host on 2026-11-10; flip it
+  back if a future VM makes none work again), and refuses bridge
   networking with a useful error instead of a netavark failure.
 - `check.sh` — diagnostics: Podman version, `/dev/fuse`, capabilities,
   cgroup writability, storage driver, plus disk use (`podman system

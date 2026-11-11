@@ -4,8 +4,9 @@
 # What it fixes, in one place:
 #   - overlay / fuse-overlayfs cannot mount (no /dev/fuse)  -> vfs storage
 #   - crun fails opening sd-bus                            -> --cgroups=disabled
-#   - a separate network namespace is refused              -> default --network=none,
-#     or pass --network=host for a networked container
+#   - a separate network namespace is refused              -> default --network=host
+#     (--network=none also fails on the VM in place from 2026-11-10:
+#     crun ioctl(SIOCSIFFLAGS) is refused, so host is the only working mode)
 #   - rootful Podman ignores ~/.config/containers/*.conf   -> this wrapper
 #     passes the storage flags explicitly, so it works even when
 #     /etc/containers/*.conf has been wiped by a VM replacement.
@@ -55,19 +56,37 @@ fi
 mkdir -p "$DATA_DIR/graphroot" "$DATA_DIR/runroot"
 
 # Refuse the one mode known to fail here, with a useful message, rather
-# than letting netavark fail cryptically.
+# than letting netavark fail cryptically. Both spellings are checked:
+# `--network=bridge` and `--network bridge` (and the --net alias).
+# The space-separated form used to slip through (audit 2026-11-10).
+prev=""
 for arg in "$@"; do
   case "$arg" in
     --network=bridge|--network=private|--net=bridge|--net=private)
       echo "podman-sandbox: isolated bridge networking is blocked in this sandbox (netavark setns: Operation not permitted)." >&2
-      echo "Use --network=none (offline) or --network=host (networked) instead." >&2
+      echo "Use --network=host instead (--network=none currently fails on this VM: crun ioctl SIOCSIFFLAGS, see README)." >&2
       exit 2
       ;;
+    bridge|private)
+      if [ "$prev" = "--network" ] || [ "$prev" = "--net" ]; then
+        echo "podman-sandbox: isolated bridge networking is blocked in this sandbox (netavark setns: Operation not permitted)." >&2
+        echo "Use --network=host instead (--network=none currently fails on this VM: crun ioctl SIOCSIFFLAGS, see README)." >&2
+        exit 2
+      fi
+      ;;
   esac
+  prev="$arg"
 done
 
-# For run/create, default to --network=none when the user did not pick a
+# For run/create, default to --network=host when the user did not pick a
 # network mode, and always disable cgroups (the sd-bus failure otherwise).
+# The default used to be --network=none, but on the replacement VM in
+# place from 2026-11-10, --network=none fails for every container with
+# "crun: ioctl(SIOCSIFFLAGS): Operation not permitted" (bringing up the
+# loopback interface is refused), even with --cgroups=disabled and even
+# though the caps now include cap_net_admin. --network=host still works,
+# so host is the default until a future VM makes none work again; if it
+# does, flip this back to --network=none and update check.sh/README.
 ARGS=()
 HAS_NETWORK=0
 IS_RUN=0
@@ -96,7 +115,7 @@ if [ "$IS_RUN" = "1" ]; then
     if [ "$INSERTED" = "0" ] && { [ "$arg" = "run" ] || [ "$arg" = "create" ]; }; then
       OUT+=(--cgroups=disabled)
       if [ "$HAS_NETWORK" = "0" ]; then
-        OUT+=(--network=none)
+        OUT+=(--network=host)
       fi
       INSERTED=1
     fi

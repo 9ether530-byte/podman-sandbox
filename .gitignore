@@ -6,3 +6,6 @@ examples/factory-in-podman/.build/
 examples/critique-in-podman/.workload/
 examples/critique-in-podman/.build/
 __pycache__/
+
+# run artifacts
+examples/first-workload/output.json
